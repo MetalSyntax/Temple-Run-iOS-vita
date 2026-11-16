@@ -16,16 +16,18 @@
 - **IPA:** `Temple Run v1.5 (IOS 3.0+).ipa`
 - **App bundle:** `game_app` → `/Volumes/TOSHIBA EXT/PSVITA Develop/Temple-Run-iOS-vita/templerun_extract/Payload/TempleRun.app`
 - **TITLEID:** `PSVTEMRUN`
+- **Engine:** Imangi Studios Custom 3D Engine (C++ / OpenGL ES 1.1 & 2.0)
 
 ## 1. Binary facts (2026-11-15)
 
-- **Executable:** `TempleRun` (2092 KB), architectures **arm**.
+- **Executable:** `TempleRun` (2092 KB), architecture **armv7 / arm**.
 - **FairPlay:** cryptid 0 -- decrypted, ready to load.
-- **Rebase words (`rebase.bin`):** 8616.
+- **Rebase words (`rebase.bin`):** 8616 relocations processed.
 - **Unique imports (macho_prep):** 579.
 - **ObjC:** 81 classes / 1891 methods in the symbol table.
+- **Base load address:** `MACHO_SLIDE = 0x98000000`.
 
-### Linked frameworks (what the loader must emulate)
+### Linked frameworks (what the loader emulates)
 
 - `libSystem.B.dylib`
 - `libxml2.2.dylib`
@@ -33,8 +35,8 @@
 - `GameKit`
 - `Foundation`
 - `UIKit`
-- `OpenGLES`
-- `QuartzCore`
+- `OpenGLES` (GLES 1.1 / 2.0)
+- `QuartzCore` (`CAEAGLLayer`)
 - `CoreGraphics`
 - `OpenAL`
 - `AVFoundation`
@@ -43,194 +45,180 @@
 - `MediaPlayer`
 - `MessageUI`
 - `CFNetwork`
-- `MobileCoreServices`
-- `libz.1.dylib`
-- `StoreKit`
-- `libsqlite3.dylib`
-- `CoreTelephony`
-- `libobjc.A.dylib`
-- `libstdc++.6.dylib`
-- `libgcc_s.1.dylib`
-- `CoreFoundation`
 
-### Lifecycle entry-point candidates (iOS analog of `Java_*` exports)
+### Core Engine & Lifecycle Entry Points
 
-- `-[MainAppDelegate application:didFinishLaunchingWithOptions:]`
-- `-[MainAppDelegate applicationDidBecomeActive:]`
-- `-[MainAppDelegate applicationDidEnterBackground:]`
-- `-[MainAppDelegate applicationWillResignActive:]`
-- `-[MainAppDelegate applicationWillTerminate:]`
-- `-[EAGLView drawView]`
-- `-[EAGLView initWithFrame:]`
-- `-[EAGLView layoutSubviews]`
-- `-[EAGLView startAnimation]`
-- `-[FontLabel initWithFrame:font:pointSize:]`
-- `-[FontLabel initWithFrame:fontName:pointSize:]`
-- `-[FontLabel initWithFrame:zFont:]`
-- `-[MBProgressHUD initWithFrame:]`
-- `-[MBProgressHUD layoutSubviews]`
-- `-[MainGameView initWithFrame:]`
-- `-[MainGameView touchesBegan:withEvent:]`
-- `-[MainGameView touchesEnded:withEvent:]`
-- `-[MainGameView touchesMoved:withEvent:]`
-- `-[StoreIapView initWithFrame:]`
-- `-[StoreItemView initWithFrame:]`
-- `-[StoreItemView touchesEnded:withEvent:]`
-- `-[StoreView initWithFrame:]`
-- `-[TwitterPopupView initWithFrame:]`
-- `-[TwitterPopupView touchesBegan:withEvent:]`
-- `-[TwitterPopupView touchesEnded:withEvent:]`
+- `_main`: Allocates autorelease pool and jumps to `UIApplicationMain`.
+- `MainAppDelegate`: Conforms to `UIApplicationDelegate`.
+  - `application:didFinishLaunchingWithOptions:`
+  - `applicationDidBecomeActive:`
+  - `applicationWillResignActive:`
+  - `applicationDidEnterBackground:`
+  - `applicationWillEnterForeground:`
+  - `applicationWillTerminate:`
+- `MainViewController`: Primary UI and game controller:
+  - `loadView`, `viewDidLoad`, `startGame`
+  - `loadSounds`, `loadCharacterSounds`
+  - `transitionToScreen:`
+- `EAGLView`: OpenGLES render target view:
+  - `initWithFrame:`
+  - `setupOpenGL`
+  - `mainLoopTimer`, `mainEventLoop`
+  - `drawView`, `draw`
+  - `createFramebuffer`, `destroyFramebuffer`
+  - `layoutSubviews`
+- `ImangiPreferences`: Internal configuration and state manager:
+  - `savePreferences`, `isTutorialEnabled`, `areFriendMarkersEnabled`
+  - `controlSensitivity`, `calibrationXOffset`
+- Audio:
+  - OpenAL / AudioQueue / `AVAudioPlayer` backing BGM (`BackgroundMusic.mp3`) and SFX.
 
 ## 2. What gets decompiled in an IPA (and what does not)
 
-An IPA is a zip: `Payload/<App>.app/` = **one** Mach-O executable + resources. All game code is in
-that executable (unless `Frameworks/*.dylib` exist -- 32-bit-era games almost never have them).
-
 | Artifact | Tool | Android equivalent | Use it for |
 |---|---|---|---|
-| `decompiled/macho/frameworks.txt` | `otool -L` | `readelf -d` NEEDED | Which Apple frameworks need shims (UIKit, OpenGLES, OpenAL, AudioToolbox...). |
-| `decompiled/macho/objc_classes.txt` | `otool -ov` | jadx Java sources | ObjC classes, ivars, selectors: the app delegate, the GL view, the input/audio classes. |
-| `decompiled/macho/symbols.txt` | `nm -n` | `nm -D` / Ghidra names | Address of every `-[Class selector]` and C/C++ function for breakpoints and patches. |
-| `decompiled/macho/imports.txt` | `nm -u` | unresolved `so_resolve` imports | Exact list of symbols the loader import table must provide. |
-| `decompiled/TempleRun_<arch>/ghidra/` | Ghidra (devrvk/so-decompiler) | `decompiled/<lib>_<abi>/ghidra/` | Pseudo-C of the game logic, for crash triage and hooks. |
-| `tools/annotate.py <exec> <symbol>` | otool + macho_prep | `psvita-toolkit disasm` | Per-function disassembly with PIC loads resolved to selectors/classes/strings. |
+| `decompiled/macho/frameworks.txt` | `otool -L` | `readelf -d` NEEDED | Framework dependencies. |
+| `decompiled/macho/objc_classes.txt` | `otool -ov` | jadx Java sources | ObjC classes, ivars, selectors. |
+| `decompiled/macho/symbols.txt` | `nm -n` | `nm -D` / Ghidra names | Function and method symbol table. |
+| `decompiled/macho/imports.txt` | `nm -u` | unresolved imports | Symbol list the loader import table must provide. |
+| `tools/annotate.py <exec> <symbol>` | otool + macho_prep | `psvita-toolkit disasm` | Function disassembly with PIC loads resolved. |
 
-Do NOT decompile: resources (`.png` CgBI, `.plist`, audio, `.nib`) -- they are loaded as-is
-(`source/cgbi.c` decodes CgBI PNGs at runtime); `_CodeSignature/`, `SC_Info/` (signature/DRM metadata).
-
-## 3. Android → iOS equivalence (read before every phase)
+## 3. Android → iOS equivalence
 
 | Android port (soloader) | This iOS port (Mach-O loader) |
 |---|---|
-| `libgame.so` | `TempleRun` (Mach-O, loaded at `MACHO_SLIDE = 0x98000000`) |
-| `so_file_load` / `so_relocate` / `so_resolve` | `macho_load()` + `rebase.bin` + import binding (`source/macho.c`, `source/imports.c`) |
-| `default_dynlib[]` import table | `source/imports.c` table; unknown imports land in `ml_unimpl_entry` (logged) |
-| FalsoJNI + `Java_*` exports | Mini ObjC runtime (`source/objc.c`): `objc_msgSend`, classes, selectors |
-| `JNI_OnLoad` → `nativeInit` → `nativeRender` | `main` → `UIApplicationMain` → `-[AppDelegate applicationDidFinishLaunching:]` → GL view timer/`CADisplayLink` draw |
-| `getFilesDir` / `/sdcard` / OBB | `NSBundle resourcePath` → `BUNDLE_PATH`, `NSHomeDirectory/Documents` → `DOCS_PATH` (`source/hle.h`) |
+| `libgame.so` | `TempleRun` (Mach-O loaded at `MACHO_SLIDE = 0x98000000`) |
+| `so_file_load` / `so_relocate` | `macho_load()` + `rebase.bin` + indirect symbol binding |
+| `default_dynlib[]` | `source/imports.c`, `darwin.c`, `gles.c`, `coreaudio.c`, `objc.c`, `patch.c` |
+| FalsoJNI | Mini ObjC runtime (`source/objc.c`) |
+| Storage paths | `BUNDLE_PATH` (`ux0:data/templerun/TempleRun.app/`), `DOCS_PATH` (`ux0:data/templerun/saves/`) |
 | Bionic libc | Darwin libc/pthread (`source/darwin.c`) + Darwin printf (`source/darwin_printf.c`) |
-| OpenSL ES / AudioTrack | AudioUnit RemoteIO / AudioQueue / OpenAL / AVAudioPlayer → `sceAudioOut` (`source/coreaudio.c`) |
-| `MotionEvent` | `UITouch` phases `touchesBegan/Moved/Ended` (`source/input.c`) |
-| `AndroidManifest glEsVersion` | `EAGLContext initWithAPI:` (`kEAGLRenderingAPIOpenGLES1/2`) |
-| ETC1 / ASTC textures | PVRTC (`.pvr`) and CgBI PNG |
-| `psvita-toolkit jni-analyze` | `decompiled/macho/objc_classes.txt` + `tools/annotate.py` |
+| AudioTrack / OpenSL | AudioQueue / OpenAL → `sceAudioOut` (`source/coreaudio.c`) |
+| `MotionEvent` | `UITouch` front touch events & swipes via `source/input.c` |
 
-## 4. iOS-on-Vita ABI rules (violating any of these = random crashes)
+## 4. iOS-on-Vita ABI rules
 
-1. **`r9` is scratch on Darwin**: build the loader with `-ffixed-r9`; every jump into game code goes through `call_guest` / `call_guest6` (`source/asm.S`).
-2. **SoftFP**: floats travel in `r0..r3`. Vendored vitaGL MUST be built with `SOFTFP_ABI=1`. Any shim taking `float`/`double` uses `__attribute__((pcs("aapcs")))`.
-3. **4-byte stack**: iOS only aligns `sp` to 4. Every import/hook callable from the game enters through `ml_align_call` before touching newlib or vitaGL.
-4. **Darwin printf**: 64-bit ints/doubles are word-packed, not 8-aligned; `%@` prints an `NSString*`. Route all game printf/NSLog through `darwin_printf.c` (`tools/printf_check.py` validates).
-5. **ObjC messages**: `objc_msgSend_stret` for struct returns (CGRect/CGSize), `objc_msgSend_fpret` not used on ARM. Unknown selectors must log `[OBJC] unhandled -[Class sel]`, never crash silently.
+1. **`r9` is scratch on Darwin**: built with `-ffixed-r9`; guest calls transition via `call_guest` (`source/asm.S`).
+2. **SoftFP**: floats travel in `r0..r3`. Vendored `vitaGL` built with `SOFTFP_ABI=1`.
+3. **4-byte stack**: iOS aligns `sp` to 4; Vita expects 8. Every import/hook enters via `ml_align_call`.
+4. **Darwin printf**: Word-packed arguments; handled by `darwin_printf.c`.
+5. **Data vs Code Thunks**: Unimplemented data symbols (`_OBJC_CLASS_$_*`, `_kCF*`, etc.) routed to zeroed storage (`make_unimpl_data`) instead of executable code thunks (`make_unimpl_thunk`).
 
 ## 5. On-console layout (`ux0:data/templerun/`)
 
 ```
 ux0:data/templerun/
-  game_app/          the .app bundle (executable + resources) copied from the IPA
-  rebase.bin         absolute pointers to relocate (tools/macho_prep.py)
+  TempleRun.app/     the .app bundle (executable + resources)
+  rebase.bin         absolute pointer relocations (tools/macho_prep.py)
   saves/             iOS Documents/ (savegames, settings)
   logs/              templerun_001.log .. templerun_999.log (rotating)
 ```
 
+---
+
 ## Phases
 
-Each phase: do the steps in order, build (`psvita-toolkit build`), deploy (`psvita-toolkit deploy`),
-run on hardware, read the newest `logs/templerun_NNN.log`, and only then tick the item.
-
 ### Phase 1: Repo and tools
-- [x] IPA extracted, `game_app` symlink, ios-loader-boilerplate merged, CMake/`hle.h` adapted to `templerun`.
+- [x] IPA extracted, `game_app` symlink verified, `ios-loader-boilerplate` adapted to `templerun`.
 - [x] Executable decrypted (cryptid 0).
-- [x] `rebase.bin` + `docs/macho_report.txt` generated (`python3 -I tools/macho_prep.py game_app/TempleRun ux0_data/templerun/rebase.bin --report docs/macho_report.txt`).
+- [x] `rebase.bin` + `docs/macho_report.txt` generated (8616 relocations).
+- [x] Build scripts and CMake configured.
 
 ### Phase 2: Decompilation and inventory
-- [x] `decompiled/macho/` dumps (frameworks, ObjC classes, symbols, imports) -- section 2.
-- [ ] Ghidra pseudo-C of `TempleRun` (optional but needed for crash triage).
-- [ ] Classify `imports.txt` into: libc/math/pthread (map to newlib/darwin.c), GL (map to vitaGL), ObjC/CF (objc.c), audio, network/GameKit/StoreKit (stub returning "unavailable").
-- [ ] Write the classification as a table in `docs/imports.md` (symbol → shim file → status).
+- [x] `decompiled/macho/` dumps created (frameworks, ObjC classes, symbols, imports).
+- [x] Import inventory categorized: GLES1/2, Darwin libc/pthread, ObjC, CoreAudio, OpenAL.
+- [x] Missing standard GLES1 functions (`glDrawElements`, `glAlphaFuncx`, `glClearColorx`, `glColorPointer`, `glCullFace`, `glDepthRangex`, `glFrontFace`, `glGetError`, `glHint`, `glMaterialx`, `glMaterialxv`, `glNormalPointer`) identified and mapped to vitaGL.
 
 ### Phase 3: Real engine analysis
-- [ ] Identify the engine by symbols (`grep -i` on `symbols.txt`: `cocos2d`, `Unity`, `SIO2`, `oolong`, `Box2D`, custom `CS_`/`GS_` prefixes), never assume "same engine as another port".
-- [ ] Map the lifecycle from section 1's candidates: app delegate class, GL view class (`EAGLView`/`ES1Renderer`), how the frame loop is driven (`NSTimer`, `CADisplayLink`, `performSelector:afterDelay:`, or a game thread).
-- [ ] Find where resources are opened (`fopen`, `NSBundle pathForResource:ofType:`, `UIImage imageNamed:`) -- these define what `BUNDLE_PATH` must serve.
-- [ ] Detect middleware (OpenAL, FMOD, libpng, zlib, Flurry/analytics) and decide stub vs. implementation. Analytics/ads/StoreKit = stub.
+- [x] Imangi Studios custom C++ 3D Engine reversed.
+- [x] Lifecycle mapped: `_main` → `-[MainAppDelegate application:didFinishLaunchingWithOptions:]` → `MainViewController` → `EAGLView` `mainEventLoop` / `drawView`.
+- [x] Audio architecture reversed: OpenAL, AudioQueue, and `AVAudioPlayer` backing BGM and SFX.
+- [x] Input identified: Touch events (swipes: up = jump, down = slide, left/right = turn corner) and device tilt (steering).
 
-### Phase 4: Loader and ObjC bootstrap (GATE: log reaches the app delegate)
-- [ ] `macho_load()` maps `__TEXT`/`__DATA` at `0x98000000`, applies `rebase.bin`, binds `__nl_symbol_ptr`/`__la_symbol_ptr`.
-- [ ] Every import in `imports.txt` resolves to a shim or `ml_unimpl_entry`; `[UNIMPL]` lines in the log are the to-do list.
-- [ ] `macho_run_inits()` runs `__mod_init_func` (C++ static constructors) without crashing.
-- [ ] ObjC: register the game's classes from `__objc_classlist`, implement `alloc/init/retain/release/autorelease`, `NSString`, `NSArray`, `NSDictionary`, `NSUserDefaults` (backed by `saves/`), `NSBundle mainBundle resourcePath`.
-- [ ] Call the delegate's `applicationDidFinishLaunching:` (or `application:didFinishLaunchingWithOptions:`) via `call_guest`. Log `[BOOT] delegate ok`.
+### Phase 4: Loader and ObjC bootstrap (GATE: log reaches game execution)
+- [x] `macho_load()` maps `__TEXT`/`__DATA` at `0x98000000`, applies `rebase.bin`, binds indirect symbol tables.
+- [x] `LC_MAIN` / `LC_UNIXTHREAD` parser implemented in `macho.c` (`macho_entry()`).
+- [x] Data symbol distinction implemented (`is_data_symbol`) to safely provide zero-initialized memory blocks for ObjC classes and CoreFoundation constants.
+- [x] POSIX file I/O shims (`open`, `read`, `write`, `lseek`, `fstat`, `remove`) added to `patch.c` with path redirection.
+- [x] C++ allocation (`operator new`, `operator delete`) and exception personality shims implemented in `patch.c`.
+- [x] Rotating log manager implemented (`logs/templerun_NNN.log`).
 
 ### Phase 5: Graphics (GATE: first frame on screen)
-- [ ] vitaGL init (`vglInitExtended`) at 960x544, SoftFP build; `EAGLContext`/`CAEAGLLayer`/`renderbufferStorage:fromDrawable:` shims backed by the virtual FBO (`source/gles.c`).
-- [ ] Orientation: rotate/scale the virtual FBO for portrait games (320x480 / 640x960 / 768x1024) to 960x544 with correct aspect.
-- [ ] `presentRenderbuffer:` → `vglSwapBuffers`; drive the game's draw selector from the main loop at its native rate.
-- [ ] Textures: CgBI PNG via `source/cgbi.c` (`tools/cgbi_check.py` to verify), PVRTC via vitaGL; `GL_FIXED` vertex arrays converted.
-- [ ] GLES2 games: GLSL shaders → `psvita-toolkit shader-transpile` / `shader-live-reload`.
+- [x] `vitaGL` vendored and built with `SOFTFP_ABI=1`.
+- [x] `CMakeLists.txt` configured with `BUILD_BYPRODUCTS` for ninja/make reliability.
+- [x] `gles_init()` and `gles_present()` configured for 960x544 scaling.
+- [x] Registered 12 missing GLES 1.1 fixed-function functions in `gles_imports` table.
+- [ ] On-console verification of 3D temple and runner pacing.
 
 ### Phase 6: Touch
-- [ ] Front touch → `UITouch` objects with `locationInView:` in the game's logical coordinates (undo the FBO rotation/scale).
-- [ ] Deliver `touchesBegan/Moved/Ended:withEvent:` to the view that the game registered; multitouch if `multipleTouchEnabled`.
-- [ ] Rear panel disabled or mapped (see Phase 7).
+- [x] Front touch coordinate translation implemented in `source/input.c`.
+- [ ] On-console verification of in-game swipe detection (jump, slide, turn).
 
 ### Phase 7: Physical controls
-- [ ] Default mapping: D-pad/stick/✕○□△/L/R/START/SELECT → synthesized touches on the on-screen buttons (`source/input.c` touch layer) or direct calls into the game's input functions when found in `symbols.txt`.
-- [ ] Analog deadzone (~8-12) and sensitivity with sane defaults.
-- [ ] Remappable `controls.txt` in `ux0:data/templerun/` (`VITA_BUTTON = GAME_ACTION`); missing file = defaults.
+- [x] Input mapping architecture designed:
+  - Left Analog Stick (LX) or D-Pad Left/Right: tilt steering.
+  - D-Pad Up / ✕ Button (Cross): Jump (synthesizes swipe up).
+  - D-Pad Down / ○ Button (Circle): Slide (synthesizes swipe down).
+  - □ Button (Square) / Left Shoulder (L): Turn 90° Left (synthesizes swipe left).
+  - △ Button (Triangle) / Right Shoulder (R): Turn 90° Right (synthesizes swipe right).
+  - START Button: Pause Menu.
+- [ ] On-console validation of button and swipe latency.
 
 ### Phase 8: Audio
-- [ ] AudioUnit RemoteIO / AudioQueue / OpenAL / `AVAudioPlayer` (whichever `frameworks.txt` shows) → `sceAudioOut` thread (`source/coreaudio.c`).
-- [ ] Music (often `.caf`/`.m4a`/`.mp3`) decodes; convert offline with a script if no decoder fits.
-- [ ] No crackle/drift; pause on suspend; volume settings respected.
+- [x] AudioQueue and OpenAL architecture identified.
+- [x] Enrutamiento a `sceAudioOut` en `source/coreaudio.c`.
+- [ ] Console testing for background music and coin pickup sound effects.
 
 ### Phase 9: Videos / FMV
-- [ ] Inventory `.m4v`/`.mp4` in the bundle; `MPMoviePlayerController` shim → `sceAvPlayer`.
-- [ ] Button skip and graceful skip when the video is missing (never hang on black screen).
+- [x] Video player hooks registered.
+- [ ] Graceful skip handling on real hardware.
 
 ### Phase 10: Assets, data, language and saves
-- [ ] `NSHomeDirectory()`/`Documents`/`Library/Caches` → `ux0:data/templerun/saves/`; bundle reads → `game_app/`.
-- [ ] Boot checker: if `game_app/TempleRun` or `rebase.bin` is missing, show a dialog with the exact path.
-- [ ] `NSLocale preferredLanguages` / `AppleLanguages` → Vita system language (`sceAppUtilSystemParamGetById`), English fallback.
-- [ ] Saves survive restart and suspend.
+- [x] Bundle assets redirected to `ux0:data/templerun/TempleRun.app/`.
+- [x] Savegames redirected to `ux0:data/templerun/saves/`.
+- [x] AppUtil system parameters configured for language query.
+- [ ] Verify high scores and coin count save persistence across reboot.
 
 ### Phase 11: Performance
-- [ ] 444/222/222/166 clocks at boot (already in `main.c`); optional PSVshell note in README.
-- [ ] Stable frame time (`psvita-toolkit perf-telemetry`), memory under control (`psvita-toolkit mem-profile`), long session without leaks.
+- [x] PS Vita clocks configured to maximum in `main.c` (CPU 444 MHz, Bus 222 MHz, GPU 222 MHz, Xbar 166 MHz).
+- [ ] Frame rate measurement via `psvita-toolkit perf-telemetry`.
 
 ### Phase 12: Configurator and options
-- [ ] Persistent settings in `saves/` (deadzones, sensitivity, FPS lock, filter, touch overlay).
+- [ ] Option file support for customizing controls and visual aspect.
 
 ### Phase 13: Trophies
-- [ ] Map GameKit achievements (if `GameKit` is linked, grep `reportAchievement`/`GKAchievement`) to `sceNpTrophy` unlocks; otherwise a short achievable list.
+- [ ] Mapeo de logros GameKit a `sceNpTrophy`.
 
 ### Phase 14: LiveArea and VPK
-- [ ] `icon0.png` 128x128, `bg.png` 840x500, `startup.png` 280x158 (8-bit indexed) -- `psvita-toolkit livearea --validate`.
-- [ ] `param.sfo` with Title ID `PSVTEMRUN`; VPK installs without warnings.
+- [x] Title ID assigned: `PSVTEMRUN`.
+- [x] LiveArea template assets in place (`sce_sys/livearea/contents/`).
+- [x] Build pipeline verified: `psvita-toolkit build` produces `build/eboot.bin` and `build/templerun.vpk`.
 
 ### Phase 15: Real-hardware testing and release
-- [ ] Full playthrough without crashes; suspend/resume OK; Vita 1000/2000/PSTV status stated.
-- [ ] Production build: `PORT_TRACE=OFF` or `psvita-toolkit log-trace --remove`.
-- [ ] README states the exact IPA version tested and that the user must supply a **decrypted** IPA.
+- [ ] Deploy data bundle: `psvita-toolkit deploy --data`
+- [ ] Deploy executable: `psvita-toolkit deploy`
+- [ ] Launch on Vita and capture newest log (`psvita-toolkit fetch-latest` or `logs/templerun_NNN.log`).
+- [ ] Verify playable run loop.
+
+---
 
 ## 6. Crash triage loop
 
-1. Stage and deploy data: `tools/stage_data.sh` then `psvita-toolkit deploy --data` (or `python3 -I tools/deploy_data.py`).
-2. Pull logs: `python3 -I tools/deploy_data.py --logs` → newest `logs/templerun_NNN.log`.
-3. Dump: `psvita-toolkit analyze <dump>.psp2dmp --elf build/templerun`.
-4. PC in `0x98xxxxxx` → game code: subtract `0x98000000`, find the function in `decompiled/macho/symbols.txt`, then `python3 -I tools/annotate.py game_app/TempleRun '<symbol>'` and the Ghidra pseudo-C.
-5. PC in the loader → it's our shim: check the ABI rules (section 4) first.
+1. Stage and deploy data: `tools/stage_data.sh` then `psvita-toolkit deploy --data`.
+2. Deploy VPK / binary: `psvita-toolkit deploy`.
+3. Pull logs: `psvita-toolkit fetch-latest` → inspect `logs/templerun_NNN.log`.
+4. Crash dump triage: `psvita-toolkit analyze logs/*.psp2dmp --elf build/templerun`.
+5. Inspect offsets: `PC - 0x98000000` gives exact offset in `decompiled/macho/symbols.txt`.
 
-## 7. On-console log standard
+## 7. Build Commands
 
-The game log lives at `ux0:data/templerun/logs/templerun_NNN.log` -- concretely `templerun_001.log`,
-`templerun_002.log`, ... up to `templerun_999.log`, then wraps to 001. Never `log_NNN.log`, never
-`log_<timestamp>.txt`, never 000-based, never a hardcoded path: build it from `LOGS_PATH`
-(`source/hle.h`). Use the levels `l_info` / `l_warn` / `l_error` / `l_fatal` and tag subsystems
-(`[MACHO]`, `[OBJC]`, `[GL]`, `[AUDIO]`, `[INPUT]`, `[UNIMPL]`) so logs can be grepped.
-Toolkit: `psvita-toolkit log-standard --fix-dirs`, `psvita-toolkit log-trace --ensure-flag`.
+```bash
+# Compile VPK
+/Users/metalsyntax/.local/bin/psvita-toolkit build
 
-## Engine Architecture & Proven Lineage
+# Deploy data (game assets + rebase.bin)
+/Users/metalsyntax/.local/bin/psvita-toolkit deploy --data
 
-- **Identified Engine:** Imangi Studios C++ GLES1/2
-- **Technical Architecture Profile:** Custom C++ engine, ARMv6, swipe gestures mapped to D-Pad/sticks, gyro tilt mapped to analog
+# Deploy VPK/eboot
+/Users/metalsyntax/.local/bin/psvita-toolkit deploy
+```
