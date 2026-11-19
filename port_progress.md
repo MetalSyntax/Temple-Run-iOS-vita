@@ -100,3 +100,12 @@ Documentación completa y arquitectura en `PORTING_PLAN.md`.
 - [ ] Desplegar datos: `psvita-toolkit deploy --data`
 - [ ] Desplegar VPK: `psvita-toolkit deploy`
 - [ ] Ejecutar en consola PS Vita y revisar `templerun_001.log`.
+
+### Revisión 2026-11-16: migrado al runtime maestro (Ferrari)
+La plantilla anterior (runtime ObjC de stubs + patch.c copiado de Crash Nitro Kart con game_init/game_run, que
+aquí no existen) no podía ejecutar este juego: 209 clases ObjC, UIKit, OpenAL. Ahora:
+- `source/` = runtime maestro vía `../Ferrari-GT-Evolution-vita/tools/sync_runtime.sh .`; propio: `port_config.h`, `patch.c`.
+- Datos: `sh tools/stage_data.sh` (game_app/, rebase.bin, binds.bin, nibs/, música .ogg) y `python3 -I tools/gen_cxx.py ux0_data/templerun/report.txt source/cxx_imports.c`.
+- `hosttest/` (del de Feanor): llega a `main()`, `MainAppDelegate`, crea la vista y dibuja la escena 3D del menú (50 frames; blanca en Mesa por PVRTC).
+- Fix al maestro (también en Ferrari): constantes NSString de GameKit/StoreKit/iAd/CoreLocation (`_GK`, `_SK`, `_AD`, `_CL`) como datos; antes `GKPlayerAuthenticationDidChangeNotificationName` se enlazaba como función → crash.
+**Pendiente:** cuelgue (watchdog 8 s) al montar el menú UIKit: `+[UIButton buttonWithType:]`, `UIImageView` animado, `NSKeyedArchiver`, `UIPasteboard`, `CFBitVector`, peticiones HTTP (Flurry/ASIHTTP) sin implementar. Controles: hacen falta *swipes* (no existen en `controls.txt` del maestro).
