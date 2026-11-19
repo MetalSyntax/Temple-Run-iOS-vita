@@ -1,100 +1,191 @@
-# iOS Mach-O Loader Boilerplate for PS Vita
+<h1 align="center">
+  <img src="extras/livearea/pic0.png" alt="Temple Run PS Vita Banner" width="700"><br>
+  Temple Run · PS Vita Port
+</h1>
 
-A reusable boilerplate and scaffolding framework for porting classic 32-bit iOS games (ARMv6 / ARMv7, 32-bit Mach-O `MH_EXECUTE`) to the PlayStation Vita.
-This is the iOS counterpart to [`soloader-boilerplate`](https://github.com/Rinnegatamante/soloader-boilerplate) (Android), based on the proven, battle-tested architecture developed in [`Inotia2-vita`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/Inotia2-vita).
+<p align="center">
+  <a href="#-status--playability">Status & Playability</a> •
+  <a href="#setup-instructions-for-players">How to install</a> •
+  <a href="#controls">Controls</a> •
+  <a href="#known-issues">Known Issues</a> •
+  <a href="#build-instructions-for-developers">How to compile</a> •
+  <a href="#credits--acknowledgments">Credits</a>
+</p>
 
----
-
-## Loader Architecture
-
-| Component | File(s) | Role & Emulation Functionality |
-|---|---|---|
-| **Mach-O Loader** | [`source/macho.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/macho.c), [`source/macho.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/macho.h) | Custom static dyld and 32-bit Mach-O executable loader with fixed base address (`MACHO_SLIDE = 0x98000000`). Applies data segment rebases, resolves import tables (`__la_symbol_ptr`, `__nl_symbol_ptr`), and binds stubs for unhandled symbols. |
-| **Assembly Glue & Trampolines** | [`source/asm.S`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/asm.S) | `call_guest` and `call_guest6` (preserve `r9`). `ml_align_call` (bridges iOS 4-byte stack alignment to VitaSDK/newlib 8-byte AAPCS). `ml_unimpl_entry` (auto-logging unimplemented stub). |
-| **Darwin / POSIX Subsystem** | [`source/darwin.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/darwin.c), [`source/darwin.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/darwin.h) | Darwin libc, libgcc, pthreads, and sockets emulation. Thread-safe POSIX wrapper with `SceUID` tracking (prevents fatal crashes on `pthread_detach`). High-precision `mach_absolute_time()` mapped to `sceKernelGetProcessTimeWide()`. |
-| **Variadic Formatter** | [`source/darwin_printf.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/darwin_printf.c), [`source/darwin_printf.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/darwin_printf.h) | Printf engine tailored to Darwin's ARM ABI: reads 64-bit doubles and integers from unaligned word boundaries, with native support for Objective-C's `%@` specifier (`NSString*`). |
-| **Mini-runtime ObjC / UIKit** | [`source/objc.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/objc.c), [`source/objc.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/objc.h) | Fast selector-based dispatching with `objc_msgSend` and `objc_msgSend_stret`. Emulates `NSString`, `UIFont` (rendered using a FreeType glyph atlas), `NSBundle` (`resourcePath`), `NSCalendar`, `UIDevice`, and on-screen keyboard via `sceImeDialog`. |
-| **OpenGL ES Graphics Backend** | [`source/gles.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/gles.c), [`source/gles.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/gles.h), [`source/vitagl_no_splash.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/vitagl_no_splash.c) | GLES1 and GLES2 pipeline powered by vendored `vitaGL` compiled with `SOFTFP_ABI=1`. Virtual FBO supports display orientation rotation and aspect-ratio scaling (portrait/landscape to Vita's native 960x544). Converts `GL_FIXED` vertex arrays and disables blocking splashscreens. |
-| **CgBI PNG Decoder** | [`source/cgbi.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/cgbi.c), [`source/cgbi.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/cgbi.h) | Native decompressor and BGR-to-RGB byte-swap converter for Apple's proprietary CgBI-optimized PNG assets, allowing intact IPA bundles to load directly without offline conversion. |
-| **CoreAudio Backend** | [`source/coreaudio.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/coreaudio.c) | Emulates AudioUnit RemoteIO and AudioSession on a dedicated high-priority `sceAudioOut` audio thread. |
-| **Input Subsystem** | [`source/input.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/input.c), [`source/input.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/input.h) | Maps PS Vita physical buttons and front capacitive multitouch screen to iOS touch events (`UITouchPhaseBegan`, `Moved`, `Ended`). |
-| **Logging Subsystem** | [`source/log.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/log.c), [`source/log.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/log.h) | Rotating on-device file logger (`ux0:data/<slug>/logs/log_001.log` .. `log_999.log`) and live stdout streaming. |
-| **Game Patches & Glue** | [`source/patch.c`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/patch.c), [`source/patch.h`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/patch.h) | Dedicated hooks for game-specific memory patches, symbol redirection, and custom bypasses. |
+An unofficial, native **iOS-to-PS Vita wrapper port** of *Temple Run* v1.5 (originally developed by **Imangi Studios**). There is no `.so` here: this port ships its own **Mach-O loader** that maps the decrypted 32-bit ARMv6 executable from the iOS IPA into PS Vita RAM and replaces the Apple frameworks it uses (UIKit, Foundation, OpenGL ES, OpenAL, CoreText, AudioToolbox) with native implementations on top of **vitaGL**, **OpenAL Soft**, **FreeType** and the Vita system libraries. Game-specific fixes are small hooks in `source/patch.c`.
 
 ---
 
-## Critical iOS on PS Vita ABI Rules
+## 🎮 Status & Playability
 
-1. **`r9` as a Scratch Register**:
-   - In Apple's Darwin ARMv6/v7 ABI, `r9` is an available scratch register (not callee-saved).
-   - In the standard ARM AAPCS (used by VitaSDK/newlib), `r9` is callee-saved or platform-reserved.
-   - **Rule**: The entire loader codebase MUST be compiled with `-ffixed-r9`, and any execution transfer into the game binary must transition through `call_guest` / `call_guest6` in [`source/asm.S`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/source/asm.S) to prevent register corruption.
-2. **SoftFP Calling Convention**:
-   - iOS 32-bit binaries pass single and double precision floats in integer registers (`r0..r3`).
-   - `vitaGL` MUST be compiled with `SOFTFP_ABI=1` so that internal calls and GXM commands (`sceGxmSetViewport`, etc.) maintain proper argument alignment.
-3. **4-Byte Stack Alignment**:
-   - 32-bit iOS code only enforces 4-byte stack alignment.
-   - VitaSDK newlib functions (especially `printf`, `malloc`, and math routines) expect an 8-byte aligned stack (AAPCS).
-   - All C callbacks invoked by the game binary enter through `ml_align_call` to re-align `sp` to an 8-byte boundary before calling newlib or vitaGL.
-4. **FairPlay DRM Decryption**:
-   - The Mach-O executable in the IPA must be completely decrypted (`cryptid = 0`).
-   - Binaries dumped directly from an encrypted app package will crash immediately with a Data Abort when loaded.
+**Status: PLAYABLE (beta, v01.00)**
 
----
+The game runs from the intro through a full run on physical PS Vita hardware: main menu, gameplay, game over and records. The in-game Store is broken and freezes the console (see [Known Issues](#known-issues)).
 
-## Included Tools (`tools/`)
-
-- [`tools/macho_prep.py`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/tools/macho_prep.py): Analyzes thin or fat Mach-O executables, verifies `cryptid == 0`, scans `__DATA` pointers against symbols, and generates `rebase.bin`.
-- [`tools/annotate.py`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/tools/annotate.py): Disassembles functions, resolving PIC calls, ObjC selectors, classes, and literal strings.
-- [`tools/cgbi_check.py`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/tools/cgbi_check.py): Verifies and extracts Apple CgBI-compressed PNG files.
-- [`tools/printf_check.py`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/tools/printf_check.py): Validates variadic string format specifiers and alignment.
-- [`tools/stage_data.sh`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/tools/stage_data.sh): Packages and organizes game assets into `ux0_data/<slug>/`.
-- [`tools/deploy_data.py`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/tools/deploy_data.py): Incremental FTP deployment directly to the PS Vita (VitaShell).
+- [x] **Mach-O loader**: maps the armv6 executable at `MACHO_SLIDE = 0x98000000`, applies **15,205** rebase words, resolves **2,297** bind slots, runs the static initializers and enters the game's `main()`. *Verified on console.*
+- [x] **Graphics**: OpenGL ES 1.1 → **vitaGL** (`SOFTFP_ABI=1`). The 320×480 portrait image is scaled to the Vita's 960×544 screen. Display modes are selectable in the options menu. *Verified on console.*
+- [x] **Touch & Controls**: the front touchscreen works as iPhone touch (swipes to turn, jump and slide). The Vita motion sensor steers; the left analog stick is the fallback. *Verified on console.*
+- [x] **Menus & Text**: UIKit menus are drawn by the loader's UIKit layer. Text is rasterized with FreeType using the game's bundled `Cheboyga.ttf`. *Verified on console.*
+- [x] **Gameplay**: a full run from start to game over. *Verified on console.* Records are written by the game to `records.hm` in its Documents folder (`ux0:data/templerun/Documents/`).
+- [x] **Performance**: about 60 fps in gameplay according to the console logs, with occasional dips (one logged interval at 27 fps). At startup the Vita is clocked at 444 MHz CPU and 222 MHz GPU (`source/main.c`). *Verified on console.*
+- [ ] **Audio**: sound effects go through OpenAL (openal-soft on `sceAudioOut`). Background music does not play yet: the game uses `AVAudioPlayer`, which is not implemented.
+- [ ] **In-game Store**: touching it freezes the entire console. Do not open it.
+- [ ] **Online features**: Game Center achievements and leaderboards, in-app purchases and analytics are not connected.
+- [ ] **Options screen switches and sliders**: the game's own UISwitch and UISlider controls (music, sound and tutorial toggles) are not rendered yet.
 
 ---
 
-## LiveArea Assets (`extras/livearea/`)
+## Disclaimer
 
-The repository stores all LiveArea presentation assets in [`extras/livearea/`](file:///Volumes/TOSHIBA%20EXT/PSVITA%20Develop/ios-loader-boilerplate/extras/livearea):
-- `icon0.png`: 128×128 application icon (official iOS wordmark on light gray `#E5E5EA`).
-- `pic0.png`: 960×544 splash screen ("iPhone OS" in Helvetica Neue typography on charcoal `#202020`).
-- `startup.png`: 280×158 LiveArea startup gate button.
-- `bg0.png`: 840×500 LiveArea background (faceted geometric low-poly mesh in Apple slate gray).
-- `template.xml`: Vita LiveArea layout definition.
+**Temple Run** is © **Imangi Studios**. The work presented in this repository is unofficial and is not produced, endorsed, or sanctioned by Imangi Studios or any affiliated entities.
 
-These files are automatically mapped directly into `sce_sys/` inside the output `.vpk` by `vita_create_vpk` in `CMakeLists.txt`.
+This software does NOT contain original game code, binaries, copyrighted graphics, or game assets. The authors do not promote or condone piracy in any way. To play, you must provide your own legally obtained, **decrypted** copy of the iOS `.ipa` (*Temple Run v1.5, iOS 3.0+*, `cryptid 0`).
 
 ---
 
-## Target Console Directory Layout (`ux0:data/<slug>/`)
+## Setup Instructions (For Players)
 
-```
-ux0:data/<slug>/
-  <AppName>.app/   Extracted iOS game bundle (.png, .caf, .fsb, plist assets)
-  rebase.bin       Rebase relocation table generated by tools/macho_prep.py
-  saves/           Game save directory (mapped to iOS Documents/ folder)
-  logs/            Runtime execution logs (log_001.log .. log_999.log)
-```
+1. **CFW & Plugins**: PS Vita on Custom Firmware (**Enso 3.60 / 3.65** recommended) with `kubridge` under `*KERNEL` in `ur0:tai/config.txt`:
+   ```ini
+   *KERNEL
+   ur0:tai/kubridge.skprx
+   ```
+2. **Shader Compiler**: `libshacccg.suprx` must be in `ur0:data/` (extract it with **ShaRKBR33D**).
+3. **Game Files**: your own decrypted **Temple Run v1.5 (iOS 3.0+)** `.ipa`. Extract `Payload/TempleRun.app` and run the data preparation on a PC with the repository tools (see [Build Instructions](#build-instructions-for-developers), "Stage the data and build"). That step generates `rebase.bin` and `binds.bin`, which the Vita cannot create by itself.
+4. **Copy to the Vita** (`ux0:data/templerun/`):
+   ```
+   ux0:data/templerun/
+     game_app/       the TempleRun.app contents (signature and macOS metadata removed)
+     rebase.bin      generated by tools/ios_prep.py (relocations)
+     binds.bin       generated by tools/ios_prep.py (imports from Apple frameworks)
+     nibs/           UI nibs converted by tools/nib_prep.py
+     nib.txt         main nib converted by tools/nib_prep.py (only if the app has one)
+     controls.txt    optional button-to-touch mapping (copied from tools/controls.example.txt)
+     Documents/      save data and records, created automatically
+     logs/           created automatically — templerun_001.log … one per run
+     options.txt     created when you save the options menu
+   ```
+5. **Install VPK**: install `templerun.vpk` (from `build/`) with VitaShell.
+
+> [!WARNING]
+> **Do not open the in-game Store.** Touching it freezes the entire console. The only way out is holding the power button to turn the Vita off.
 
 ---
 
-## Quick Start & Port Initialization
+## Controls
 
-Using `psvita-toolkit`:
+| Input | Action | Status |
+| :---: | :--- | :---: |
+| **Front Touchscreen** | iPhone-style touch: swipe to turn, jump and slide; tap in menus | ✅ Working |
+| **Motion sensor (tilt)** | Steer by tilting the Vita (neutral = held upright, no calibration) | ✅ Working |
+| **Left Analog Stick** | Lateral tilt; overrides the motion sensor | ✅ Working |
+| **SELECT + START** | Open the options menu (the game pauses) | ✅ Working |
+| **CROSS / CIRCLE / SQUARE / START** | Tap the screen point set in `controls.txt` (optional) | ✅ Working |
+
+> [!TIP]
+> `controls.txt` (in `ux0:data/templerun/`) maps up to 6 buttons to screen points, in 320×480 portrait coordinates with the origin at the top left. Edit it over FTP; no rebuild is needed. The defaults come from `tools/controls.example.txt`.
+
+### Options menu (SELECT + START)
+
+| Option | Values | Notes |
+| :--- | :--- | :--- |
+| **Screen mode** | centered · full · tate · tate full | **centered**: original aspect ratio with black bars. **full**: stretched to 960×544. **tate**: rotated 90° with the original aspect ratio (hold the Vita vertically). **tate full**: rotated 90° and stretched. |
+| **Screen filter** | bilinear · sharp bilinear | |
+| **Anti-aliasing (MSAA)** | off · 2x · 4x | Applies after restarting the game. |
+| **Tilt** | motion sensor · left stick only | The left stick always overrides the sensor. |
+
+Navigate with D-pad ↑/↓ to move between rows, ←/→ or ✕ to change a value, and ○ or START to save and close. Settings are saved to `ux0:data/templerun/options.txt` (keys `mode=`, `filter=`, `msaa=`, `accel=`).
+
+---
+
+## Known Issues
+
+> [!CAUTION]
+> **Touching the in-game Store freezes the entire console.** The only way out is holding the power button to turn the Vita off. Avoid the Store.
+
+- **Online features do nothing**: Game Center achievements and leaderboards, in-app purchases, Flurry analytics, and the Twitter and Facebook buttons are not connected in this port.
+- **No background music**: `AVAudioPlayer` is not implemented yet, so only sound effects play.
+- **Game Options switches and sliders are not rendered**: the UISwitch and UISlider controls for music, sound and tutorial are missing from the game's own Options screen.
+- **UIKit text can look soft**: UIKit text is rasterized at 320×480 and upscaled. There are no text shadows or button titles yet.
+- **No motion calibration**: the tilt sensor is not calibrated. Neutral is the Vita held upright.
+- **Crash dumps** are written by the system to `ux0:data/` (not to the game folder). `tools/deploy_data.py --logs` fetches them.
+
+---
+
+## Build Instructions (For Developers)
+
+### Prerequisites
+
+- [VitaSDK](https://vitasdk.org/) (`$VITASDK`). CMake builds the vendored vitaGL (`vendor/vitaGL`) with `SOFTFP_ABI=1`. The rest of the libraries are linked from VitaSDK as listed in `CMakeLists.txt` (OpenAL Soft, vorbis/ogg, FreeType, libpng, zlib, libbz2, and the Vita stub libraries).
+- CMake 3.14+ and Python 3 (for the tools). `tools/ios_prep.py` needs `capstone`. ffmpeg is optional and is only used to convert music to `.ogg`.
+- The decrypted `TempleRun.app` folder, linked as `game_app` in the repository root. It is never committed: `.gitignore` excludes `*.ipa`, `game_app`, and `ux0_data/`.
+
+### Stage the data and build
+
 ```bash
-# Initialize a new iOS port directly from an IPA file:
-psvita-toolkit init-port --ipa /path/to/game.ipa
+git clone [TODO: repository URL; this clone has no `origin` remote configured]
+cd Temple-Run-iOS-vita
+ln -s /path/to/Payload/TempleRun.app game_app
+export VITASDK=/path/to/vitasdk
 
-# Validate LiveArea assets:
-psvita-toolkit livearea validate
+# Builds ux0_data/templerun/ (game_app/, rebase.bin, binds.bin, nibs/, .ogg music)
+sh tools/stage_data.sh
 
-# Build vitaGL with SoftFP ABI support:
-cd vendor/vitaGL && ./build_vitagl.sh
-
-# Configure and compile the VPK:
-cmake -B build
-cmake --build build
+# Builds eboot.bin and templerun.vpk in build/
+cmake -S . -B build
+cmake --build build -j8
 ```
+
+`./build.sh` runs the same Release build and compiles vitaGL first if `vendor/vitaGL/libvitaGL.a` is missing.
+
+The loader is compiled with `-ffixed-r9` and `-mfloat-abi=softfp`, because Darwin uses `r9` as a scratch register and iOS passes floats in integer registers.
+
+### Deploy & Debug
+
+```bash
+python3 -I tools/deploy_data.py            # upload ux0_data/templerun/ over FTP (VitaShell); never touches Documents/ or logs/
+python3 -I tools/deploy_data.py --dry-run  # list what would be uploaded
+python3 -I tools/deploy_data.py --logs     # fetch new logs and crash dumps into ./logs/
+```
+
+The Vita address is read from `vita_ip` in `.psvita-toolkit.json` (gitignored); `--ip` overrides it. Install the VPK with VitaShell.
+
+To map a crash PC to the original binary, subtract `MACHO_SLIDE` (`0x98000000`) to get the address inside the Mach-O `TempleRun` executable in `game_app/`. `tools/annotate.py` disassembles functions by symbol name.
+
+### Loader architecture (`source/`)
+
+| Component | File(s) | Role |
+| :--- | :--- | :--- |
+| **Mach-O loader** | `macho.c`, `macho.h` | Maps the executable segments at `MACHO_SLIDE`, applies `rebase.bin`, resolves the `binds.bin` imports, and runs the static initializers. |
+| **Boot & glue** | `main.c`, `asm.S`, `imports.c`, `imports.h`, `hle.h` | Boot order (subsystems → Mach-O → ObjC runtime → game `main()`), trampolines that preserve `r9` and realign the stack, and import lookup. |
+| **ObjC runtime** | `objc.c`, `objc.h` | Objective-C 2 runtime for the game's classes and the native classes: selector and method caches, refcounting, and autorelease pools. |
+| **Foundation & UIKit** | `foundation.c`, `uikit.c` | Minimal Foundation/CoreFoundation, and UIKit, QuartzCore, EAGL and CoreGraphics on top of `objc.c`. |
+| **libc / libgcc / pthread** | `darwin.c`, `darwin_printf.c` | Darwin C library, libgcc and pthread layer over the Vita newlib; printf with the Darwin variadic ABI. |
+| **C++ imports** | `cxx_imports.c` | Generated by `tools/gen_cxx.py` from the import report. Do not edit by hand. |
+| **iOS 4/5 runtime** | `ios5.c` | Blocks, GCD, ARC, OSAtomic, sqlite, and stubs for features with no Vita equivalent. |
+| **OpenGL ES** | `gles.c`, `vitagl_no_splash.c` | OpenGL ES 1.1 → vitaGL; rotates and scales the drawable to the 960×544 screen. |
+| **Text** | `coretext.c`, `font8x8.c` | CoreText/UIFont on FreeType. `font8x8.c` is the 8×8 font used by the options menu. |
+| **Audio** | `audio.c`, `openal.c` | AudioToolbox (AudioSession stubs, AudioFile for `.ogg`, AudioQueue) and OpenAL on openal-soft. |
+| **Input** | `input.c` | Front touch and Vita buttons → UIKit touches, mapped back through the screen transform. Reads `controls.txt`. SELECT + START opens the options menu. |
+| **Options** | `options.c`, `options.h` | Video options menu, saved to `options.txt`. |
+| **PNG** | `cgbi.c` | Decoder for Apple CgBI PNG files. |
+| **Logging** | `log.c` | Rotating file logger (`logs/templerun_NNN.log`) and stdout. |
+| **Game patches** | `patch.c` | Game-specific hooks. Each one is backed by a log or dump and its Mach-O address. |
+| **Game constants** | `port_config.h` | Game name, slug, executable name, orientation, screen size and font. |
+
+Architecture and progress notes: [`PORTING_PLAN.md`](PORTING_PLAN.md).
+
+---
+
+## Credits & Acknowledgments
+
+- **Temple Run** is intellectual property of **Imangi Studios**.
+- **vitaGL** graphics library by [Rinnegatamante](https://github.com/Rinnegatamante/vitaGL).
+- **kubridge** plugin by [Bythos](https://github.com/bythos14/kubridge).
+- The Mach-O loader and the OpenGL ES and Darwin layers started from [Inotia2-vita](https://github.com/MetalSyntax/Inotia2-vita). The shared iOS runtime in `source/` comes from [Ferrari-GT-Evolution-vita](https://github.com/MetalSyntax/Ferrari-GT-Evolution-vita). The sibling [Zombie-Infection-vita](https://github.com/MetalSyntax/Zombie-Infection-vita) is another iOS port in the same family.
+- **OpenAL Soft** (LGPL-2.1), **FreeType**, **libpng**, **zlib**, **libvorbis** and **libogg** are used as provided by VitaSDK.
+- `source/font8x8.c` is the 8×8 debug font from PSPSDK (BSD license; © 2005 Marcus R. Brown, James Forshaw, John Kelley), taken from [Zenonia2-vita](https://github.com/MetalSyntax/Zenonia2-psvita-port).
+- Special thanks to the PS Vita homebrew and porting community.
 
 ---
 
