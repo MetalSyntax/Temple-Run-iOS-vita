@@ -4,13 +4,31 @@
 </h1>
 
 <p align="center">
-  <a href="#-status--playability">Status & Playability</a> •
-  <a href="#setup-instructions-for-players">How to install</a> •
-  <a href="#controls">Controls</a> •
-  <a href="#known-issues">Known Issues</a> •
-  <a href="#build-instructions-for-developers">How to compile</a> •
-  <a href="#credits--acknowledgments">Credits</a>
+  <b>Native port of Temple Run v1.5 (Imangi Studios) for PlayStation Vita and PlayStation TV.</b>
 </p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-PS%20Vita%20%7C%20PS%20TV-003791.svg?style=flat-square&logo=playstation" alt="Platform" />
+  <img src="https://img.shields.io/badge/Origin-iOS-000000.svg?style=flat-square&logo=apple" alt="Origin" />
+  <img src="https://img.shields.io/badge/Title%20ID-PSVTEMRUN-ff69b4.svg?style=flat-square" alt="Title ID" />
+  <img src="https://img.shields.io/badge/Engine-iOS%20native%20%28ObjC%2FUIKit%29-brightgreen.svg?style=flat-square" alt="Engine" />
+  <img src="https://img.shields.io/badge/Renderer-vitaGL%20%28GLES%201.1%29-orange.svg?style=flat-square" alt="Renderer" />
+  <img src="https://img.shields.io/badge/Status-Playable%20%28beta%29-yellowgreen.svg?style=flat-square" alt="Status" />
+</p>
+
+<p align="center">
+  <a href="#-description">Description</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-controls">Controls</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-known-issues">Known Issues</a> •
+  <a href="#-building-from-source">Build</a> •
+  <a href="#-credits">Credits</a>
+</p>
+
+---
+
+## 📖 Description
 
 An unofficial, native **iOS-to-PS Vita wrapper port** of *Temple Run* v1.5 (originally developed by **Imangi Studios**). There is no `.so` here: this port ships its own **Mach-O loader** that maps the decrypted 32-bit ARMv6 executable from the iOS IPA into PS Vita RAM and replaces the Apple frameworks it uses (UIKit, Foundation, OpenGL ES, OpenAL, CoreText, AudioToolbox) with native implementations on top of **vitaGL**, **OpenAL Soft**, **FreeType** and the Vita system libraries. Game-specific fixes are small hooks in `source/patch.c`.
 
@@ -18,9 +36,12 @@ An unofficial, native **iOS-to-PS Vita wrapper port** of *Temple Run* v1.5 (orig
 
 ## 🎮 Status & Playability
 
-**Status: PLAYABLE (beta, v01.00)**
+**Status: Playable (beta)** (VPK `01.00`, for Temple Run v1.5, iOS 3.0+)
 
-The game runs from the intro through a full run on physical PS Vita hardware: main menu, gameplay, game over and records. The in-game Store is broken and freezes the console (see [Known Issues](#known-issues)).
+The game runs from the intro through a full run on physical PS Vita hardware: main menu, gameplay, game over and records. The in-game Store is broken and freezes the console (see [Known Issues](#-known-issues)).
+
+> [!NOTE]
+> The "Verified on console" marks below refer to the console runs recorded in this README. On 2026-11-16 the `source/` runtime was migrated to the shared iOS runtime (see `port_progress.md`, "Revisión 2026-11-16"). The current build has not been re-tested on console since that migration; the real-hardware test checklist (Phase 15) in `port_progress.md` is still open.
 
 - [x] **Mach-O loader**: maps the armv6 executable at `MACHO_SLIDE = 0x98000000`, applies **15,205** rebase words, resolves **2,297** bind slots, runs the static initializers and enters the game's `main()`. *Verified on console.*
 - [x] **Graphics**: OpenGL ES 1.1 → **vitaGL** (`SOFTFP_ABI=1`). The 320×480 portrait image is scaled to the Vita's 960×544 screen. Display modes are selectable in the options menu. *Verified on console.*
@@ -35,44 +56,30 @@ The game runs from the intro through a full run on physical PS Vita hardware: ma
 
 ---
 
-## Disclaimer
+## ✨ Features
 
-**Temple Run** is © **Imangi Studios**. The work presented in this repository is unofficial and is not produced, endorsed, or sanctioned by Imangi Studios or any affiliated entities.
+| Feature | Status | Notes |
+| :--- | :---: | :--- |
+| Boots to gameplay | ✅ | Intro to a full run, as recorded in the console runs of this README |
+| Graphics / renderer | ✅ | OpenGL ES 1.1 via vitaGL, scaled to 960×544; display modes in the options menu |
+| Audio & music | 🟡 | Sound effects through OpenAL. Background music not implemented (`AVAudioPlayer`) |
+| Video / cutscenes | 🧪 | MediaPlayer symbols registered; safe skip when videos are missing not yet verified |
+| Physical buttons | ✅ | CROSS / CIRCLE / SQUARE / START tap points from `controls.txt` (optional) |
+| Analog sticks / camera | ✅ | Left stick (lateral tilt) overrides the motion sensor |
+| Touch screen | ✅ | iPhone-style swipes to turn, jump and slide; taps in menus |
+| Button remapping / port menu | 🟡 | SELECT + START options menu and `controls.txt`. Switches and sliders of the game's own options screen not rendered |
+| Save data | ✅ | Records written to `records.hm` in `Documents/` (verified on console) |
+| Native trophies | ❌ | Not implemented (GameKit achievements are not mapped to `sceNpTrophy`) |
+| Languages | 🧪 | Not documented |
+| Performance | ✅ | About 60 fps in gameplay per console logs, with occasional dips to 27 fps |
+| Online / IAP / ads | ➖ | Game Center, in-app purchases, Flurry analytics and Twitter / Facebook buttons are not connected |
+| PS TV | 🧪 | Not tested on PS TV |
 
-This software does NOT contain original game code, binaries, copyrighted graphics, or game assets. The authors do not promote or condone piracy in any way. To play, you must provide your own legally obtained, **decrypted** copy of the iOS `.ipa` (*Temple Run v1.5, iOS 3.0+*, `cryptid 0`).
-
----
-
-## Setup Instructions (For Players)
-
-1. **CFW & Plugins**: PS Vita on Custom Firmware (**Enso 3.60 / 3.65** recommended) with `kubridge` under `*KERNEL` in `ur0:tai/config.txt`:
-   ```ini
-   *KERNEL
-   ur0:tai/kubridge.skprx
-   ```
-2. **Shader Compiler**: `libshacccg.suprx` must be in `ur0:data/` (extract it with **ShaRKBR33D**).
-3. **Game Files**: your own decrypted **Temple Run v1.5 (iOS 3.0+)** `.ipa`. Extract `Payload/TempleRun.app` and run the data preparation on a PC with the repository tools (see [Build Instructions](#build-instructions-for-developers), "Stage the data and build"). That step generates `rebase.bin` and `binds.bin`, which the Vita cannot create by itself.
-4. **Copy to the Vita** (`ux0:data/templerun/`):
-   ```
-   ux0:data/templerun/
-     game_app/       the TempleRun.app contents (signature and macOS metadata removed)
-     rebase.bin      generated by tools/ios_prep.py (relocations)
-     binds.bin       generated by tools/ios_prep.py (imports from Apple frameworks)
-     nibs/           UI nibs converted by tools/nib_prep.py
-     nib.txt         main nib converted by tools/nib_prep.py (only if the app has one)
-     controls.txt    optional button-to-touch mapping (copied from tools/controls.example.txt)
-     Documents/      save data and records, created automatically
-     logs/           created automatically — templerun_001.log … one per run
-     options.txt     created when you save the options menu
-   ```
-5. **Install VPK**: install `templerun.vpk` (from `build/`) with VitaShell.
-
-> [!WARNING]
-> **Do not open the in-game Store.** Touching it freezes the entire console. The only way out is holding the power button to turn the Vita off.
+Legend: `✅ Working (verified on console) · 🧪 Implemented, not yet verified on console · 🟡 Partial · ❌ Not working · ➖ Not applicable · ❔ Not documented yet`
 
 ---
 
-## Controls
+## 🎯 Controls
 
 | Input | Action | Status |
 | :---: | :--- | :---: |
@@ -85,7 +92,9 @@ This software does NOT contain original game code, binaries, copyrighted graphic
 > [!TIP]
 > `controls.txt` (in `ux0:data/templerun/`) maps up to 6 buttons to screen points, in 320×480 portrait coordinates with the origin at the top left. Edit it over FTP; no rebuild is needed. The defaults come from `tools/controls.example.txt`.
 
-### Options menu (SELECT + START)
+### ⚙️ Options
+
+Open the options menu with **SELECT + START** (the game pauses).
 
 | Option | Values | Notes |
 | :--- | :--- | :--- |
@@ -93,12 +102,51 @@ This software does NOT contain original game code, binaries, copyrighted graphic
 | **Screen filter** | bilinear · sharp bilinear | |
 | **Anti-aliasing (MSAA)** | off · 2x · 4x | Applies after restarting the game. |
 | **Tilt** | motion sensor · left stick only | The left stick always overrides the sensor. |
+| **FPS counter / limit** | off · counter · limit 30 · counter + limit 30 | New, *not yet tested on console*. Counter in the top-left corner; the limit caps the game at 30 FPS. Saved as `show_fps=` / `fps_cap=`. |
 
-Navigate with D-pad ↑/↓ to move between rows, ←/→ or ✕ to change a value, and ○ or START to save and close. Settings are saved to `ux0:data/templerun/options.txt` (keys `mode=`, `filter=`, `msaa=`, `accel=`).
+Navigate with D-pad ↑/↓ to move between rows, ←/→ or ✕ to change a value, and ○ or START to save and close. Settings are saved to `ux0:data/templerun/options.txt` (keys `mode=`, `filter=`, `msaa=`, `accel=`, `show_fps=`, `fps_cap=`).
 
 ---
 
-## Known Issues
+## 📋 Prerequisites
+
+1. **CFW & Plugins**: PS Vita on Custom Firmware (**Enso 3.60 / 3.65** recommended) with `kubridge` under `*KERNEL` in `ur0:tai/config.txt`:
+   ```ini
+   *KERNEL
+   ur0:tai/kubridge.skprx
+   ```
+2. **Shader Compiler**: `libshacccg.suprx` must be in `ur0:data/` (extract it with **ShaRKBR33D**).
+3. **Game Files**: your own decrypted **Temple Run v1.5 (iOS 3.0+)** `.ipa` (`cryptid 0`). Extract `Payload/TempleRun.app` and run the data preparation on a PC with the repository tools (see [Building from Source](#-building-from-source)). That step generates `rebase.bin` and `binds.bin`, which the Vita cannot create by itself.
+
+---
+
+## 📦 Installation
+
+1. Install `templerun.vpk` (from `build/`) with VitaShell.
+2. Copy the staged data to `ux0:data/templerun/` on the Vita.
+3. Launch the game from the LiveArea.
+
+### Final File Structure in `ux0:data/templerun/`
+
+```text
+ux0:data/templerun/
+├── game_app/       <- the TempleRun.app contents (signature and macOS metadata removed)
+├── rebase.bin      <- generated by tools/ios_prep.py (relocations)
+├── binds.bin       <- generated by tools/ios_prep.py (imports from Apple frameworks)
+├── nibs/           <- UI nibs converted by tools/nib_prep.py
+├── nib.txt         <- main nib converted by tools/nib_prep.py (only if the app has one)
+├── controls.txt    <- optional button-to-touch mapping (copied from tools/controls.example.txt)
+├── Documents/      <- save data and records, created automatically
+├── logs/           <- created automatically: templerun_001.log … one per run
+└── options.txt     <- created when you save the options menu
+```
+
+> [!WARNING]
+> **Do not open the in-game Store.** Touching it freezes the entire console. The only way out is holding the power button to turn the Vita off.
+
+---
+
+## 🐛 Known Issues
 
 > [!CAUTION]
 > **Touching the in-game Store freezes the entire console.** The only way out is holding the power button to turn the Vita off. Avoid the Store.
@@ -108,11 +156,12 @@ Navigate with D-pad ↑/↓ to move between rows, ←/→ or ✕ to change a val
 - **Game Options switches and sliders are not rendered**: the UISwitch and UISlider controls for music, sound and tutorial are missing from the game's own Options screen.
 - **UIKit text can look soft**: UIKit text is rasterized at 320×480 and upscaled. There are no text shadows or button titles yet.
 - **No motion calibration**: the tilt sensor is not calibrated. Neutral is the Vita held upright.
+- **Current build not re-tested**: the runtime migration of 2026-11-16 (see [Status](#-status--playability)) still needs a console run.
 - **Crash dumps** are written by the system to `ux0:data/` (not to the game folder). `tools/deploy_data.py --logs` fetches them.
 
 ---
 
-## Build Instructions (For Developers)
+## 🔨 Building from Source
 
 ### Prerequisites
 
@@ -123,7 +172,7 @@ Navigate with D-pad ↑/↓ to move between rows, ←/→ or ✕ to change a val
 ### Stage the data and build
 
 ```bash
-git clone [TODO: repository URL; this clone has no `origin` remote configured]
+git clone <!-- TODO: repository URL; this clone has no `origin` remote configured -->
 cd Temple-Run-iOS-vita
 ln -s /path/to/Payload/TempleRun.app game_app
 export VITASDK=/path/to/vitasdk
@@ -152,6 +201,12 @@ The Vita address is read from `vita_ip` in `.psvita-toolkit.json` (gitignored); 
 
 To map a crash PC to the original binary, subtract `MACHO_SLIDE` (`0x98000000`) to get the address inside the Mach-O `TempleRun` executable in `game_app/`. `tools/annotate.py` disassembles functions by symbol name.
 
+Architecture and progress notes: [`PORTING_PLAN.md`](PORTING_PLAN.md) and [`port_progress.md`](port_progress.md).
+
+---
+
+## 📁 Project Structure
+
 ### Loader architecture (`source/`)
 
 | Component | File(s) | Role |
@@ -173,19 +228,21 @@ To map a crash PC to the original binary, subtract `MACHO_SLIDE` (`0x98000000`) 
 | **Game patches** | `patch.c` | Game-specific hooks. Each one is backed by a log or dump and its Mach-O address. |
 | **Game constants** | `port_config.h` | Game name, slug, executable name, orientation, screen size and font. |
 
-Architecture and progress notes: [`PORTING_PLAN.md`](PORTING_PLAN.md).
+### Other folders
+
+- `tools/`: `stage_data.sh`, `ios_prep.py`, `nib_prep.py`, `gen_cxx.py`, `deploy_data.py`, `annotate.py`, `controls.example.txt`.
+- `vendor/vitaGL/`: vitaGL built from source.
+- `hosttest/`: ARM32 host test harness (copied from the Feanor port).
+- `extras/livearea/`: LiveArea assets.
+- `PORTING_PLAN.md`: living plan. `port_progress.md`: progress log per phase.
 
 ---
 
-## Credits & Acknowledgments
+## 📜 Disclaimer
 
-- **Temple Run** is intellectual property of **Imangi Studios**.
-- **vitaGL** graphics library by [Rinnegatamante](https://github.com/Rinnegatamante/vitaGL).
-- **kubridge** plugin by [Bythos](https://github.com/bythos14/kubridge).
-- The Mach-O loader and the OpenGL ES and Darwin layers started from [Inotia2-vita](https://github.com/MetalSyntax/Inotia2-vita). The shared iOS runtime in `source/` comes from [Ferrari-GT-Evolution-vita](https://github.com/MetalSyntax/Ferrari-GT-Evolution-vita). The sibling [Zombie-Infection-vita](https://github.com/MetalSyntax/Zombie-Infection-vita) is another iOS port in the same family.
-- **OpenAL Soft** (LGPL-2.1), **FreeType**, **libpng**, **zlib**, **libvorbis** and **libogg** are used as provided by VitaSDK.
-- `source/font8x8.c` is the 8×8 debug font from PSPSDK (BSD license; © 2005 Marcus R. Brown, James Forshaw, John Kelley), taken from [Zenonia2-vita](https://github.com/MetalSyntax/Zenonia2-psvita-port).
-- Special thanks to the PS Vita homebrew and porting community.
+**Temple Run** is © **Imangi Studios**. The work presented in this repository is unofficial and is not produced, endorsed, or sanctioned by Imangi Studios or any affiliated entities.
+
+This software does NOT contain original game code, binaries, copyrighted graphics, or game assets. The authors do not promote or condone piracy in any way. To play, you must provide your own legally obtained, **decrypted** copy of the iOS `.ipa` (*Temple Run v1.5, iOS 3.0+*, `cryptid 0`).
 
 ---
 
@@ -207,3 +264,22 @@ This project is **free** and will stay free. If you enjoy it, a tip from **$1** 
 - A say in which games I port next.
 
 > Game files are never distributed. You always need your own legally obtained copy of the game.
+
+---
+
+## 👥 Credits
+
+- **Temple Run** is intellectual property of **Imangi Studios**.
+- **Wonder Diaz**: This port.
+- **vitaGL** graphics library by [Rinnegatamante](https://github.com/Rinnegatamante/vitaGL).
+- **kubridge** plugin by [Bythos](https://github.com/bythos14/kubridge).
+- The Mach-O loader and the OpenGL ES and Darwin layers started from [Inotia2-vita](https://github.com/MetalSyntax/Inotia2-vita). The shared iOS runtime in `source/` comes from [Ferrari-GT-Evolution-vita](https://github.com/MetalSyntax/Ferrari-GT-Evolution-vita). The sibling [Zombie-Infection-vita](https://github.com/MetalSyntax/Zombie-Infection-vita) is another iOS port in the same family.
+- **OpenAL Soft** (LGPL-2.1), **FreeType**, **libpng**, **zlib**, **libvorbis** and **libogg** are used as provided by VitaSDK.
+- `source/font8x8.c` is the 8×8 debug font from PSPSDK (BSD license; © 2005 Marcus R. Brown, James Forshaw, John Kelley), taken from [Zenonia2-vita](https://github.com/MetalSyntax/Zenonia2-psvita-port).
+- Special thanks to the PS Vita homebrew and porting community.
+
+---
+
+## 📄 License
+
+<!-- TODO: no LICENSE file in this repository. Confirm the license of the loader code before publishing a release. Third-party notices: OpenAL Soft (LGPL-2.1) is linked from VitaSDK; `source/font8x8.c` is BSD-licensed (PSPSDK). -->
